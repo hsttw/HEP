@@ -1,0 +1,50 @@
+#! /usr/bin/env python
+
+from flask import Flask, request
+app = Flask(__name__)
+
+TEST_FLAG = '''
+-----BEGIN PGP MESSAGE-----
+Version: GnuPG v2
+
+hQIOA3cJQkpWQ+qhEAf+K7ykuu2qLjS9cxQhpUmsIP8RXoBbdnM9JDxTz1+6P0cT
+xqNAcWLJRv7y8pyfnS5jaNlGtpo7fY+07Dlgr6d1OUIZaoIjYdgPOp4hm/j1XFtu
+CEh9Pz3iiwyCRK+v6l/oiy8/LE8et2fnSeKmrRlog+9xlk/ncIHk7RKYS4M5kEta
+69wFApNuJdbdyLSTB89FAY72xEEOsU4q7cHGi+d2uzNAoS2G+moqS+W80AQuRwGw
+LGhqfj1iRB7hxs+7gYCF8KT5hgY+1cwAAqT2hI7etp8dfrFXZU+CzP8ogZVYfJm9
+4AvcLLlv0OOHef5A+yUyN8QzECAeow3K+aU/FntnqAf/ZzCIHFlBWPG3pYAMcoHO
+/QrHETdPfgElotVIKQ7qOP3Y9IduRkplCgEfkT23n7b6vK4HgveiDJcsAFVjFhWj
+RM7Bj07od6erRyLh5GLNEirvnXvCXzRIcriW5Oov8eRd0sJV3etLHePlsIWTboYA
+DHWT1VGE000sjIgYvvtrkmtfhHbnjYEVPAX9CvRIPwY5a95os2Qacv7AIZD37Xvk
+RPjMndy2qubD3on4DUslUhDz480ibsQrMtLmhi3/IBSd8ItPZetouHFXYI9uh4Nh
+JUA6Mxkyojhxmb8iMUYEv6m9GSHUU+LkqzhRUJISgPdAOue3lpM2xC2amI6JAOUP
+aNJZAW6A1BzAvB4RMuZvvc/wlYWg9D1g+LvI5QUonE+Tu/AFot1iN5vxTeK6BKIA
+RE1Wh13sHF+dW1hO7g6TCr7o+hIVwAmZiNzgOtEmDj6FrSpan4hExigqKd0=
+=UMcn
+-----END PGP MESSAGE-----
+'''
+TEST_FLAG = '\n'.join([_.strip() for _ in TEST_FLAG.split('\n')])
+FMT       = r'HST_2016{[^}]+}'
+homedir   ='~/.gnupg'
+
+@app.route('/flag', methods=['GET', 'POST'])
+def flagHandler():
+	import re, gnupg
+
+	''' First - Check the flag is legal format '''
+	flag = request.form['flag'] if 'flag' in request.form else ''
+	if not re.match(FMT, flag):
+		return 'Flag format not match, it should be {0}\n'.format(FMT), 401
+
+	gpg   = gnupg.GPG(homedir=homedir)
+	flags = [str(gpg.decrypt(TEST_FLAG))]
+	flags = [_.strip() for _ in flags]
+
+	''' Second - Check the flag in the pool or not '''
+	if flag not in flags:
+		return 'Flag not match\n', 403
+
+	return 'Congratulation!\n', 200
+
+if __name__ == '__main__':
+	app.run(debug=True)
