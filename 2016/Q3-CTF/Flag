@@ -160,8 +160,12 @@ def flagMainPage():
 
 	defaultWelcome = 'Welcome HST 2016 Q3 event, you need login or regist first!\\n\\n'
 	loginWelcome   = 'Try to find out the flag, {0}\\n\\n'.format(usr)
+	helpmsg        = r'You need to find any quiz in this system and find the flag in the quiz,' +				\
+					 r'which the flag is the format like HST_2016{...}, and then using the command `flag`.\n' +	\
+					 r'For example, `flag {0}`\n'.format(TEST_FLAG)
 
 	param = {
+		'help'      : helpmsg,
 		'welcome'	: (loginWelcome if usr else defaultWelcome),
 		'usr'		: (usr if usr else '...'),
 		'ctf_cnt'	: db.query(FlagDB).count(),

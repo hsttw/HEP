@@ -10,7 +10,10 @@ jQuery(function($, undefined) {
 
 	$('#term').terminal(function(command, term) {
 		cmd = command.split(' ')[0];
-		if (cmd === 'register' && '...' === id) {
+		if (cmd === 'help' || cmd === 'readme') {
+			/* Help message */
+			term.echo('{{param.help}}');
+		} else if (cmd === 'register' && '...' === id) {
 			if (3 !== command.split(' ').length) {
 				term.echo('usage: register [usr] [pwd]');
 			} else {
