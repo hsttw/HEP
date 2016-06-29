@@ -9,7 +9,9 @@ jQuery(function($, undefined) {
 	var id = '{{param.usr}}';
 
 	$('#term').terminal(function(command, term) {
-		cmd = command.split(' ')[0];
+		var cmd = command.split(' ')[0];
+		var param = command.split(' ').slice(1).join(' ');
+
 		if (cmd === 'help' || cmd === 'readme') {
 			/* Help message */
 			term.echo('{{param.help}}');
@@ -68,7 +70,19 @@ jQuery(function($, undefined) {
 					}
 				});
 		} else {
-			term.echo('-sh: `' + cmd + '` command not found!');
+			$.ajax('/quiz/' + cmd, {
+				data : {
+					param	: param
+				},
+				statusCode : {
+					200 : function (resp) {
+						term.echo(JSON.parse(resp));
+					},
+					403 : function() {
+						term.echo('-sh: `' + cmd + '` command not found!');
+					}
+				}
+			});
 		}
 	}, {
 		greetings: null,

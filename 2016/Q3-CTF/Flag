@@ -82,7 +82,7 @@ if True:	## DB related
 			cls.contain   = contain
 			cls.timestamp = datetime.now()
 		def __repr__(cls):
-			return u'{0. ip:16s} add CTF - {0.title}'.format(cls)
+			return u'{0.usr:16s} add CTF - {0.title}'.format(cls)
 	class SubmitDB(Base):
 		__tablename__ = 'hst_2016_ctf_submit'
 
@@ -232,6 +232,33 @@ if True:	## account related
 		return 'Good-bye {0} ~\n'.format(usr)
 
 if True:	## Quiz related
+	@app.route('/quiz/<cmd>')
+	def flagQuiz(cmd):
+		import json
+
+		param = request.args.get('param') if 'param' in request.args else ''
+		print param
+		if 'ls' == cmd and not param:
+			query  = FlagDBAgent().query(UsrDB, FlagDB).join(FlagDB)
+			query  = query.group_by(FlagDB.title)
+			record = r'    '.join([_.FlagDB.title for _ in query.all()])
+			return json.dumps(record)
+		elif 'll' == cmd or ('ls' == cmd and '-al' == param):
+			fmt    = 'drwxr--r-- {0:>16s} users {1.score:>5d} {2} {1.title}'
+
+			query  = FlagDBAgent().query(UsrDB, FlagDB).join(FlagDB)
+			query  = query.group_by(FlagDB.title)
+
+			record = [[_.UsrDB.usr, _.FlagDB] for _ in query.all()]
+			last   = sorted([_.timestamp for x, _ in record])[0]
+			record = [fmt.format(usr, db, db.timestamp.strftime('%Y %H:%m:%d')) for usr, db in record]
+
+			resp   = 'drwxr--r--            admin users {0:5s} {1} {2}\n'.format('?????', last.strftime('%Y %H:%m:%d'), '.')
+			resp  += 'drwxr--r--            admin users {0:5s} {1} {2}\n'.format('?????', last.strftime('%Y %H:%m:%d'), '..')
+			resp  += '\n'.join(record)
+			return json.dumps(resp)
+		else:
+			return 'command {0} not found'.format(cmd), 403
 	@app.route('/flag', methods=['GET', 'POST'])
 	def flagSubmit():
 		''' Flag submit handler '''
@@ -269,7 +296,6 @@ if True:	## Quiz related
 				return 'Congratulation! Your score is {0}\n'.format(score), 200
 		else:
 			return 'Flag not match\n', 403
-
 	@app.route('/publish', methods=['GET', 'POST'])
 	def flagsPublish():
 		return '', 403
