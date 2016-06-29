@@ -154,10 +154,16 @@ if True:	## DB related
 def flagMainPage():
 	from flask import render_template
 
+	session = request.cookies['session'] if 'session' in request.cookies else ''
+	usr =  FlagDBAgent().usr(session)
 	db = FlagDBAgent()
+
+	defaultWelcome = 'Welcome HST 2016 Q3 event, you need login or regist first!\\n\\n'
+	loginWelcome   = 'Try to find out the flag, {0}\\n\\n'.format(usr)
+
 	param = {
-		'welcome'	: 'Welcome HST 2016 Q3 event',
-		'usr'		: 'demo',
+		'welcome'	: (loginWelcome if usr else defaultWelcome),
+		'usr'		: (usr if usr else '...'),
 		'ctf_cnt'	: db.query(FlagDB).count(),
 	}
 	return render_template('layout.htm', param=param)
@@ -265,4 +271,4 @@ if True:	## Quiz related
 		return '', 403
 
 if __name__ == '__main__':
-	app.run(debug=True)
+	app.run(host='0.0.0.0', debug=True)

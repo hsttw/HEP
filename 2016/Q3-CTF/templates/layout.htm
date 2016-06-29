@@ -2,28 +2,102 @@
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
 <script src='http://terminal.jcubic.pl/js/jquery.terminal-0.10.12.min.js'></script>
 <script src='http://terminal.jcubic.pl/js/unix_formatting.js'></script>
+<link rel='stylesheet' href='http://terminal.jcubic.pl/css/jquery.terminal-0.10.12.min.css'>
+
 <script>
 jQuery(function($, undefined) {
+	var id = '{{param.usr}}';
+
 	$('#term').terminal(function(command, term) {
-		if (command !== '') {
-			try {
-				var result = window.eval(command);
-			} catch(e) {
-				term.echo('-hst `' + command + '` command not found');
+		cmd = command.split(' ')[0];
+		if (cmd === 'register' && '...' === id) {
+			if (3 !== command.split(' ').length) {
+				term.echo('usage: register [usr] [pwd]');
+			} else {
+				var usr = command.split(' ')[1];
+				var pwd = command.split(' ')[2];
+
+				$.ajax('/register/' + usr + '/' + 'pwd' , {
+					statusCode : {
+						400 : function () {
+							term.echo('User `' + usr + '` already exist\n');
+						}
+					}
+				});
 			}
+		} else if (cmd === 'login') {
+			if (3 !== command.split(' ').length) {
+				term.echo('usage: login [usr] [pwd]');
+			} else {
+				var usr = command.split(' ')[1];
+				var pwd = command.split(' ')[2];
+
+				$.ajax('/login/' + usr + '/' + 'pwd', {
+					statusCode : {
+						200 : function() {
+							location.reload();
+						},
+						404 : function () {
+							term.echo('User `' + usr + '` not exist\n');
+						},
+						403 : function() {
+							term.echo('Login failure');
+							id = usr;
+						}
+					}
+				});
+			}
+		} else if (cmd === 'logout' && '...' !== id) {
+				$.ajax('/logout/' + id, {
+					statusCode : {
+						200 : function () {
+							term.echo('Goodbye ' + usr);
+							document.cookie = '';
+							location.reload();
+						},
+						404 : function () {
+							term.echo('User `' + usr + '` not exist\n');
+						},
+						403 : function() {
+							term.echo('Logout failure');
+							id = '...';
+						}
+					}
+				});
 		} else {
-		   term.echo('');
+			term.echo('-sh: `' + cmd + '` command not found!');
 		}
 	}, {
-		greetings: '{{param.welcome}}',
-		name: 'js_demo',
+		greetings: null,
+		onInit: function(term) {
+			term.echo('{{param.welcome}}');
+		},
+		name: id,
 		height: 200,
-		prompt: '{{param.usr}}> '
+		prompt: '{{param.usr}} > '
 	});
 });
 </script>
 <style type='text/css'>
+body {
+	background-color : #CCC;
+}
+.container {
+	margin           : 24px auto;
+	padding          : 17px;
+	width            : 640px;
+	height           : auto;
+	border           : 2px solid #CCC;
+	border-radius    : 17px;
+	box-shadow       : 6px 8px 12px #CCC;
+	background-color : #000;
+}
+#term {
+	margin    : 0 auto;
+}
 </style>
 <TITLE> HST 2016 Q3 - Quiz </TITLE>
 
-<div id='term' class='term'></div>
+<div class='container'>
+	<div id='term' class='term'></div>
+</div>
