@@ -1,0 +1,29 @@
+<!doctype html>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+<script src='http://terminal.jcubic.pl/js/jquery.terminal-0.10.12.min.js'></script>
+<script src='http://terminal.jcubic.pl/js/unix_formatting.js'></script>
+<script>
+jQuery(function($, undefined) {
+	$('#term').terminal(function(command, term) {
+		if (command !== '') {
+			try {
+				var result = window.eval(command);
+			} catch(e) {
+				term.echo('-hst `' + command + '` command not found');
+			}
+		} else {
+		   term.echo('');
+		}
+	}, {
+		greetings: '{{param.welcome}}',
+		name: 'js_demo',
+		height: 200,
+		prompt: '{{param.usr}}> '
+	});
+});
+</script>
+<style type='text/css'>
+</style>
+<TITLE> HST 2016 Q3 - Quiz </TITLE>
+
+<div id='term' class='term'></div>

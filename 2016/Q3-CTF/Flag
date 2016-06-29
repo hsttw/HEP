@@ -1,50 +1,268 @@
 #! /usr/bin/env python
 
-from flask import Flask, request
+import logging
+logger = logging.getLogger('HST.CTF')
+logfmt = logging.Formatter('[%(asctime)-15s]  %(message)s')
+logFP  = logging.StreamHandler()
+logFP.setFormatter(logfmt)
+logger.addHandler(logFP)
+logger.setLevel(logging.INFO)
+
+from flask import Flask, request, make_response
 app = Flask(__name__)
 
-TEST_FLAG = '''
------BEGIN PGP MESSAGE-----
-Version: GnuPG v2
-
-hQIOA3cJQkpWQ+qhEAf+K7ykuu2qLjS9cxQhpUmsIP8RXoBbdnM9JDxTz1+6P0cT
-xqNAcWLJRv7y8pyfnS5jaNlGtpo7fY+07Dlgr6d1OUIZaoIjYdgPOp4hm/j1XFtu
-CEh9Pz3iiwyCRK+v6l/oiy8/LE8et2fnSeKmrRlog+9xlk/ncIHk7RKYS4M5kEta
-69wFApNuJdbdyLSTB89FAY72xEEOsU4q7cHGi+d2uzNAoS2G+moqS+W80AQuRwGw
-LGhqfj1iRB7hxs+7gYCF8KT5hgY+1cwAAqT2hI7etp8dfrFXZU+CzP8ogZVYfJm9
-4AvcLLlv0OOHef5A+yUyN8QzECAeow3K+aU/FntnqAf/ZzCIHFlBWPG3pYAMcoHO
-/QrHETdPfgElotVIKQ7qOP3Y9IduRkplCgEfkT23n7b6vK4HgveiDJcsAFVjFhWj
-RM7Bj07od6erRyLh5GLNEirvnXvCXzRIcriW5Oov8eRd0sJV3etLHePlsIWTboYA
-DHWT1VGE000sjIgYvvtrkmtfhHbnjYEVPAX9CvRIPwY5a95os2Qacv7AIZD37Xvk
-RPjMndy2qubD3on4DUslUhDz480ibsQrMtLmhi3/IBSd8ItPZetouHFXYI9uh4Nh
-JUA6Mxkyojhxmb8iMUYEv6m9GSHUU+LkqzhRUJISgPdAOue3lpM2xC2amI6JAOUP
-aNJZAW6A1BzAvB4RMuZvvc/wlYWg9D1g+LvI5QUonE+Tu/AFot1iN5vxTeK6BKIA
-RE1Wh13sHF+dW1hO7g6TCr7o+hIVwAmZiNzgOtEmDj6FrSpan4hExigqKd0=
-=UMcn
------END PGP MESSAGE-----
-'''
-TEST_FLAG = '\n'.join([_.strip() for _ in TEST_FLAG.split('\n')])
+TEST_FLAG = 'HST_2016{CTF Flag f0rm@t}'
 FMT       = r'HST_2016{[^}]+}'
 homedir   ='~/.gnupg'
 
-@app.route('/flag', methods=['GET', 'POST'])
-def flagHandler():
-	import re, gnupg
+if True:	## DB related
+	import sqlalchemy
+	from sqlalchemy import Column, Integer, String, DateTime, Text, Index, ForeignKey
+	from sqlalchemy.ext.declarative import declarative_base
+	from sqlalchemy.orm import relationship, backref
+	Base = declarative_base()
 
-	''' First - Check the flag is legal format '''
-	flag = request.form['flag'] if 'flag' in request.form else ''
-	if not re.match(FMT, flag):
-		return 'Flag format not match, it should be {0}\n'.format(FMT), 401
+	from sqlalchemy.engine import Engine
+	from sqlalchemy import event
 
-	gpg   = gnupg.GPG(homedir=homedir)
-	flags = [str(gpg.decrypt(TEST_FLAG))]
-	flags = [_.strip() for _ in flags]
+	''' Enable the SQLite Foreign Key '''
+	@event.listens_for(Engine, "connect")
+	def set_sqlite_pragma(dbapi_connection, connection_record):
+		cursor = dbapi_connection.cursor()
+		cursor.execute("PRAGMA foreign_keys=ON")
+		cursor.close()
 
-	''' Second - Check the flag in the pool or not '''
-	if flag not in flags:
-		return 'Flag not match\n', 403
+	class UsrDB(Base):
+		__tablename__ = 'hst_2016_ctf_usr'
 
-	return 'Congratulation!\n', 200
+		ip        = Column(String(16))
+		usr       = Column(String(16), primary_key=True)
+		score     = Column(Integer)
+		pwd       = Column(String(64))
+		agent     = Column(Text(convert_unicode=True))
+		session   = Column(String(32))
+		timestamp = Column(DateTime)
+
+		flag   = relationship('FlagDB')
+		submit = relationship('SubmitDB')
+
+		def __init__(cls, usr, pwd, ip, agent):
+			from datetime import datetime
+
+			cls.ip        = ip
+			cls.usr       = usr
+			cls.pwd       = pwd
+			cls.score     = 0
+			cls.agent     = agent
+			cls.timestamp = datetime.now()
+		def __repr__(cls):
+			return u'{0.usr} on {0.ip:16s} / {0.agent}'.format(cls)
+	class FlagDB(Base):
+		__tablename__ = 'hst_2016_ctf_flag'
+
+		ip        = Column(String(16))
+		usr       = Column(String(16), ForeignKey('hst_2016_ctf_usr.usr'))
+		score     = Column(Integer)
+		flag      = Column(Text, primary_key=True)
+		title     = Column(Text(convert_unicode=True))
+		contain   = Column(Text(convert_unicode=True))
+		timestamp = Column(DateTime)
+
+		def __init__(cls, ip, usr, flag, title, contain, score=1):
+			from datetime import datetime
+			import gnupg
+
+			gpg   = gnupg.GPG(homedir=homedir)
+
+			cls.ip        = ip
+			cls.usr       = usr
+			cls.score     = score
+			cls.flag      = str(gpg.encrypt(flag, '5643EAA1'))
+			cls.title     = title
+			cls.contain   = contain
+			cls.timestamp = datetime.now()
+		def __repr__(cls):
+			return u'{0. ip:16s} add CTF - {0.title}'.format(cls)
+	class SubmitDB(Base):
+		__tablename__ = 'hst_2016_ctf_submit'
+
+		id        = Column(Integer, primary_key=True)
+		ip        = Column(String(16))
+		usr       = Column(String(16), ForeignKey('hst_2016_ctf_usr.usr'))
+		flag      = Column(Text)
+		timestamp = Column(DateTime)
+
+		def __init__(cls, ip, usr, flag):
+			from datetime import datetime
+
+			cls.ip    = ip
+			cls.usr   = usr
+			cls.flag  = flag
+			timestamp = datetime.now()
+		def __repr__(cls):
+			return u'{0.usr} submit {0.flag}'.format(cls)
+
+	class FlagDBAgent(object):
+		def __init__(cls, engine='sqlite:///flag.db'):
+			from sqlalchemy import create_engine, MetaData
+			from sqlalchemy.orm import sessionmaker
+
+			engine   = create_engine(engine, encoding='UTF-8', convert_unicode=False)
+
+			Base.metadata.create_all(engine)
+
+			Session = sessionmaker(bind=engine)
+			session = Session()
+
+			metadata = MetaData(bind=engine)
+			metadata.create_all(engine)
+
+			cls.session = session
+			for attr in ('query', 'add', 'commit', 'rollback'):
+				setattr(cls, attr, getattr(cls.session, attr))
+		def usr(cls, session):
+			record = cls.query(UsrDB).filter(UsrDB.session == session).all()
+			if 1 != len(record):
+				return ''
+			return record[0].usr
+
+	if not FlagDBAgent().query(UsrDB).count():
+		param = {
+			'ip'		: '127.0.0.1',
+			'usr'		: 'ctf admin',
+			'pwd'		: '',
+			'agent'		: 'localhost',
+		}
+		record = UsrDB(**param)
+		db = FlagDBAgent()
+		db.add(record)
+		db.commit()
+	if not FlagDBAgent().query(FlagDB).count():
+		param = {
+			'ip'		: '127.0.0.1',
+			'usr'		: 'ctf admin',
+			'flag'		: TEST_FLAG,
+			'title'		: 'HST Q3 event - Quiz',
+			'contain'	: 'The flag likes `{0}`'.format(TEST_FLAG)
+		}
+		record = FlagDB(**param)
+		db = FlagDBAgent()
+		db.add(record)
+		db.commit()
+
+@app.route('/')
+def flagMainPage():
+	from flask import render_template
+
+	db = FlagDBAgent()
+	param = {
+		'welcome'	: 'Welcome HST 2016 Q3 event',
+		'usr'		: 'demo',
+		'ctf_cnt'	: db.query(FlagDB).count(),
+	}
+	return render_template('layout.htm', param=param)
+
+if True:	## account related
+	@app.route('/register/<usr>/<pwd>')
+	def flagRegister(usr, pwd):
+		''' Handle the register event '''
+		ip    = request.remote_addr
+		agent = request.headers.get('User-Agent')
+
+		db  = FlagDBAgent()
+		if db.query(UsrDB).filter(UsrDB.usr == usr).count():
+			return 'Already regist', 400
+
+		''' FIXME - Should we use plaintext? Yes! '''
+		record = UsrDB(usr, pwd, ip, agent)
+		db.add(record)
+		db.commit()
+		return 'Welcome join our quiz, {0}\n'.format(usr)
+	@app.route('/login/<usr>/<pwd>')
+	def flagLogin(usr, pwd):
+		''' Handle the login event '''
+		ip    = request.remote_addr
+		agent = request.headers.get('User-Agent')
+
+		query  = FlagDBAgent().query(UsrDB)
+		if not query.filter(UsrDB.usr == usr).count():
+			return 'You need to register first\n', 404
+		elif 1 != query.filter(UsrDB.usr == usr).filter(UsrDB.pwd == pwd).count():
+			return 'Login failure\n', 403
+
+		import random
+		from datetime import datetime
+
+		''' FIXME - Should we using Simple Pseudo Random Number? Yes! '''
+		random.seed(datetime.now())
+		session = '{0}-{1:X}'.format(usr, random.randint(0, 2**32))
+
+		db = FlagDBAgent()
+		db.query(UsrDB).filter(UsrDB.usr == usr).update({'session' : session})
+		db.commit()
+
+		resp = make_response('Welcome back {0} ~\n'.format(usr))
+		resp.set_cookie('session', session)
+		return resp
+	@app.route('/logout/<usr>')
+	def flagLogout(usr):
+		ip      = request.remote_addr
+		agent   = request.user_agent
+		session = request.cookies['session'] if 'session' in request.cookies else ''
+
+		query  = FlagDBAgent().query(UsrDB)
+		if not query.filter(UsrDB.usr == usr).count():
+			return 'You need to register first\n', 404
+		elif 1 != query.filter(UsrDB.usr == usr).filter(UsrDB.session == session).count():
+			return 'Logout failure\n', 403
+
+		db = FlagDBAgent()
+		db.query(UsrDB).filter(UsrDB.usr == usr).update({'session' : ''})
+		db.commit()
+		return 'Good-bye {0} ~\n'.format(usr)
+
+if True:	## Quiz related
+	@app.route('/flag', methods=['GET', 'POST'])
+	def flagSubmit():
+		''' Flag submit handler '''
+		import re, gnupg
+
+		''' First - Check the flag is legal format '''
+		flag    = request.form['flag'] if 'flag' in request.form else ''
+		ip      = request.remote_addr
+		session = request.cookies['session'] if 'session' in request.cookies else ''
+		usr     = FlagDBAgent().usr(session)
+
+		if not usr:
+			return 'You need to login first\n', 403
+
+		record = SubmitDB(ip, usr, flag)
+		db = FlagDBAgent()
+		logger.info('{0}'.format(str(record)))
+		if not re.match(FMT, flag):
+			return 'Flag format not match, it should be {0}\n'.format(FMT), 401
+		elif db.query(FlagDB, SubmitDB).filter(SubmitDB.flag == flag).count():
+			return 'Already submit this flag', 405
+		''' Record the submit flag event '''
+		db.add(record)
+		db.commit()
+
+		gpg   = gnupg.GPG(homedir=homedir)
+		for answer in db.query(FlagDB).all():
+			''' Second - Check the flag in the pool or not '''
+			print flag, str(gpg.decrypt(answer.flag))
+			if flag == str(gpg.decrypt(answer.flag)):
+				query = db.query(UsrDB).filter(UsrDB.usr == usr)
+				score = query.all()[0].score + answer.score
+				query.update({'score' : score})
+				db.commit()
+				return 'Congratulation! Your score is {0}\n'.format(score), 200
+		else:
+			return 'Flag not match\n', 403
+
+	@app.route('/publish', methods=['GET', 'POST'])
+	def flagsPublish():
+		return '', 403
 
 if __name__ == '__main__':
 	app.run(debug=True)
