@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 TEST_FLAG = 'HST_2016{CTF Flag f0rm@t}'
 FMT       = r'HST_2016{[^}]+}'
-homedir   ='~/.gnupg'
+homedir   = '~/.gnupg'
 
 if True:	## DB related
 	import sqlalchemy
@@ -37,7 +37,7 @@ if True:	## DB related
 
 		ip        = Column(String(16))
 		usr       = Column(String(16), primary_key=True)
-		score     = Column(Integer)
+		quiz      = Column(Text(convert_unicode=True))
 		pwd       = Column(String(64))
 		agent     = Column(Text(convert_unicode=True))
 		session   = Column(String(32))
@@ -129,7 +129,7 @@ if True:	## DB related
 	if not FlagDBAgent().query(UsrDB).count():
 		param = {
 			'ip'		: '127.0.0.1',
-			'usr'		: 'ctf admin',
+			'usr'		: 'CTF admin',
 			'pwd'		: '',
 			'agent'		: 'localhost',
 		}
@@ -138,12 +138,16 @@ if True:	## DB related
 		db.add(record)
 		db.commit()
 	if not FlagDBAgent().query(FlagDB).count():
+		README  = r'Welcome join the HST 2016 Q3 event, this is a CTF quiz and you can find many quizzes '
+		README += r'in many way on this site, and finally you should find out the flag and the flag '
+		README += r'has special format likes `{0}`. When you find the flag, you can use '.format(TEST_FLAG)
+		README += r'command `flag` to submit the flag'
 		param = {
 			'ip'		: '127.0.0.1',
-			'usr'		: 'ctf admin',
+			'usr'		: 'CTF admin',
 			'flag'		: TEST_FLAG,
-			'title'		: 'HST Q3 event - Quiz',
-			'contain'	: 'The flag likes `{0}`'.format(TEST_FLAG)
+			'title'		: 'README',
+			'contain'	: README
 		}
 		record = FlagDB(**param)
 		db = FlagDBAgent()
@@ -160,9 +164,9 @@ def flagMainPage():
 
 	defaultWelcome = 'Welcome HST 2016 Q3 event, you need login or regist first!\\n\\n'
 	loginWelcome   = 'Try to find out the flag, {0}\\n\\n'.format(usr)
-	helpmsg        = r'You need to find any quiz in this system and find the flag in the quiz,' +				\
-					 r'which the flag is the format like HST_2016{...}, and then using the command `flag`.\n' +	\
-					 r'For example, `flag {0}`\n'.format(TEST_FLAG)
+	helpmsg        = r'You need to find any quiz in this system and find the flag in the quiz,' +					\
+					 r'which the flag is the format like HST_2016{...}, and then using the command `flag`.\n\n' +	\
+					 r'For example, `flag {0}`'.format(TEST_FLAG)
 
 	param = {
 		'help'      : helpmsg,
@@ -231,19 +235,25 @@ if True:	## account related
 		db.commit()
 		return 'Good-bye {0} ~\n'.format(usr)
 
-if True:	## Quiz related
-	@app.route('/quiz/<cmd>')
-	def flagQuiz(cmd):
-		import json
+@app.route('/quiz/<cmd>')
+def flagQuiz(cmd):
+	import json
 
-		param = request.args.get('param') if 'param' in request.args else ''
-		print param
-		if 'ls' == cmd and not param:
+	session = request.cookies['session'] if 'session' in request.cookies else ''
+	usr     = FlagDBAgent().usr(session)
+	if not usr:
+		return 'You need login first', 403
+
+	param = request.args.get('param') if 'param' in request.args else ''
+	if 'ls' == cmd:
+		if not param:
 			query  = FlagDBAgent().query(UsrDB, FlagDB).join(FlagDB)
 			query  = query.group_by(FlagDB.title)
-			record = r'    '.join([_.FlagDB.title for _ in query.all()])
+			record = r'    '.join([_.FlagDB.title for _ in query.all() if not _.FlagDB.title.startswith('.')])
 			return json.dumps(record)
-		elif 'll' == cmd or ('ls' == cmd and '-al' == param):
+		elif param in ('-h', '--help'):
+			return json.dumps('ls [-lh]')
+		elif param in ('-l', '-al', '-la'):
 			fmt    = 'drwxr--r-- {0:>16s} users {1.score:>5d} {2} {1.title}'
 
 			query  = FlagDBAgent().query(UsrDB, FlagDB).join(FlagDB)
@@ -253,52 +263,74 @@ if True:	## Quiz related
 			last   = sorted([_.timestamp for x, _ in record])[0]
 			record = [fmt.format(usr, db, db.timestamp.strftime('%Y %H:%m:%d')) for usr, db in record]
 
-			resp   = 'drwxr--r--            admin users {0:5s} {1} {2}\n'.format('?????', last.strftime('%Y %H:%m:%d'), '.')
-			resp  += 'drwxr--r--            admin users {0:5s} {1} {2}\n'.format('?????', last.strftime('%Y %H:%m:%d'), '..')
-			resp  += '\n'.join(record)
+			fmt2   = 'drwxr--r-- {0:>16s} users {2} {1} {{0}}'.format('CTF admin', last.strftime('%Y %H:%m:%d'), '?'*5)
+			resp   = '\n'.join([fmt2.format(_) for _ in ('.', '..')] + record)
 			return json.dumps(resp)
+	elif 'cat' == cmd:
+		if not param or param in ('-h', '--help'):
+			return json.dumps('cat [-h] file')
+
+		record = FlagDBAgent().query(FlagDB).filter(FlagDB.title == param).all()
+		if 1 != len(record):
+			return json.dumps('file {0} not exist'.format(param))
 		else:
-			return 'command {0} not found'.format(cmd), 403
-	@app.route('/flag', methods=['GET', 'POST'])
-	def flagSubmit():
-		''' Flag submit handler '''
-		import re, gnupg
+			return json.dumps(u'Quiz: {0}\n\n{1}\n'.format(param, record[0].contain))
+	elif 'flag' == cmd:
+		resp = flagSubmit(usr, param)
+		return json.dumps(resp) if isinstance(resp, str) else resp
+	elif 'score' == cmd:
+		db   = FlagDBAgent()
+		quiz = db.query(UsrDB).filter(UsrDB.usr == usr).first().quiz
+		quiz = json.loads(quiz) if quiz else []
+		quiz = [[_, db.query(FlagDB).filter(FlagDB.title == _).first().score] for _ in quiz]
 
-		''' First - Check the flag is legal format '''
-		flag    = request.form['flag'] if 'flag' in request.form else ''
-		ip      = request.remote_addr
-		session = request.cookies['session'] if 'session' in request.cookies else ''
-		usr     = FlagDBAgent().usr(session)
+		resp  = 'Your score is {0}\n\n'.format(sum([y for x, y in quiz]))
+		resp += u'\n'.join(['{0:4d} {1}'.format(y, x) for x, y in quiz])
 
-		if not usr:
-			return 'You need to login first\n', 403
+		return json.dumps(resp)
+	else:
+		return 'command {0} not found'.format(cmd), 404
+def flagSubmit(usr, flag):
+	''' Flag submit handler '''
+	import re, gnupg
 
-		record = SubmitDB(ip, usr, flag)
-		db = FlagDBAgent()
-		logger.info('{0}'.format(str(record)))
-		if not re.match(FMT, flag):
-			return 'Flag format not match, it should be {0}\n'.format(FMT), 401
-		elif db.query(FlagDB, SubmitDB).filter(SubmitDB.flag == flag).count():
-			return 'Already submit this flag', 405
-		''' Record the submit flag event '''
-		db.add(record)
-		db.commit()
+	''' First - Check the flag is legal format '''
+	ip      = request.remote_addr
+	session = request.cookies['session'] if 'session' in request.cookies else ''
+	record  = SubmitDB(ip, usr, flag)
+	db      = FlagDBAgent()
+	gpg     = gnupg.GPG(homedir=homedir)
 
-		gpg   = gnupg.GPG(homedir=homedir)
-		for answer in db.query(FlagDB).all():
-			''' Second - Check the flag in the pool or not '''
-			print flag, str(gpg.decrypt(answer.flag))
-			if flag == str(gpg.decrypt(answer.flag)):
-				query = db.query(UsrDB).filter(UsrDB.usr == usr)
-				score = query.all()[0].score + answer.score
-				query.update({'score' : score})
-				db.commit()
-				return 'Congratulation! Your score is {0}\n'.format(score), 200
-		else:
-			return 'Flag not match\n', 403
-	@app.route('/publish', methods=['GET', 'POST'])
-	def flagsPublish():
-		return '', 403
+	logger.info('{0}'.format(str(record)))
+
+	if not re.match(FMT, flag):
+		return 'Flag format not match, it should be {0}\n'.format(FMT)
+	elif db.query(FlagDB, SubmitDB).filter(SubmitDB.flag == flag).count():
+		return 'Already submit this flag\n'
+
+	''' Record the submit flag event '''
+	db.add(record)
+	db.commit()
+
+	for answer in db.query(FlagDB).all():
+		''' Second - Check the flag in the pool or not '''
+		if flag == str(gpg.decrypt(answer.flag)):
+			import json
+
+			query  = db.query(UsrDB).filter(UsrDB.usr == usr).first()
+			quiz   = query.quiz
+			quiz   = json.loads(quiz) if quiz else []
+			quiz   = quiz + [answer.title]
+			score  = [_.score for _ in db.query(FlagDB) if _.title in quiz]
+
+			db.query(UsrDB).filter(UsrDB.usr == usr).update({'quiz' : json.dumps(quiz)})
+			db.commit()
+			return 'Congratulation! Your score is {0}\n'.format(score)
+	else:
+		return 'Flag not match\n'
+@app.route('/publish', methods=['GET', 'POST'])
+def flagsPublish():
+	return '', 403
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', debug=True)

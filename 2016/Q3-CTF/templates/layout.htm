@@ -15,6 +15,9 @@ jQuery(function($, undefined) {
 		if (cmd === 'help' || cmd === 'readme') {
 			/* Help message */
 			term.echo('{{param.help}}');
+		} else if (cmd === 'welcome') {
+			/* Welcome message */
+			term.echo('{{param.welcome}}');
 		} else if (cmd === 'register' && '...' === id) {
 			if (3 !== command.split(' ').length) {
 				term.echo('usage: register [usr] [pwd]');
@@ -24,6 +27,9 @@ jQuery(function($, undefined) {
 
 				$.ajax('/register/' + usr + '/' + 'pwd' , {
 					statusCode : {
+						200 : function() {
+							term.echo('Register success, now you can login');
+						},
 						400 : function () {
 							term.echo('User `' + usr + '` already exist\n');
 						}
@@ -79,6 +85,9 @@ jQuery(function($, undefined) {
 						term.echo(JSON.parse(resp));
 					},
 					403 : function() {
+						term.echo('You should login first');
+					},
+					404 : function() {
 						term.echo('-sh: `' + cmd + '` command not found!');
 					}
 				}
@@ -89,9 +98,10 @@ jQuery(function($, undefined) {
 		onInit: function(term) {
 			term.echo('{{param.welcome}}');
 		},
-		name: id,
-		height: 200,
-		prompt: '{{param.usr}} > '
+		name   : id,
+		width  : 800,
+		height : 600,
+		prompt : '{{param.usr}} > '
 	});
 });
 </script>
@@ -102,7 +112,7 @@ body {
 .container {
 	margin           : 24px auto;
 	padding          : 17px;
-	width            : 640px;
+	width            : 840px;
 	height           : auto;
 	border           : 2px solid #CCC;
 	border-radius    : 17px;
@@ -111,6 +121,7 @@ body {
 }
 #term {
 	margin    : 0 auto;
+	height    : 540px;
 }
 </style>
 <TITLE> HST 2016 Q3 - Quiz </TITLE>
