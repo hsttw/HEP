@@ -36,7 +36,7 @@ if True:	## DB related
 		__tablename__ = 'hst_2016_ctf_usr'
 
 		ip        = Column(String(16))
-		usr       = Column(String(16), primary_key=True)
+		usr       = Column(String(16), primary_key=True, unique=True)
 		quiz      = Column(Text(convert_unicode=True))
 		pwd       = Column(String(64))
 		agent     = Column(Text(convert_unicode=True))
@@ -63,8 +63,8 @@ if True:	## DB related
 		ip        = Column(String(16))
 		usr       = Column(String(16), ForeignKey('hst_2016_ctf_usr.usr'))
 		score     = Column(Integer)
-		flag      = Column(Text, primary_key=True)
-		title     = Column(Text(convert_unicode=True))
+		flag      = Column(Text, primary_key=True, unique=True)
+		title     = Column(Text(convert_unicode=True), unique=True)
 		contain   = Column(Text(convert_unicode=True))
 		timestamp = Column(DateTime)
 
@@ -330,7 +330,39 @@ def flagSubmit(usr, flag):
 		return 'Flag not match\n'
 @app.route('/publish', methods=['GET', 'POST'])
 def flagsPublish():
-	return '', 403
+	from flask import render_template
+
+	if 'POST' == request.method:
+		import re
+
+		ip      = request.remote_addr.strip()
+		title   = request.form.get('title').strip()
+		flag    = request.form.get('flag').strip()
+		level   = request.form.get('level').strip()
+		usr     = request.form.get('usr').strip()
+		contain = request.form.get('contain').strip()
+
+		db = FlagDBAgent()
+
+		if 0 != db.query(UsrDB).filter(UsrDB.usr == usr).count() and 'CTF admin' != usr:
+			return 'No such user {0}'.format(usr), 404
+		elif not title or not contain:
+			return 'Invalid title or contain',403
+		elif level not in ('basic', 'quiz'):
+			return 'Invalid quiz level', 403
+		elif not re.match(FMT, flag):
+			return 'Invalid flag format', 403
+
+		score  = 1 if level == 'basic' else 100
+		if 'CTF admin' == usr:
+			score = 1
+		record = FlagDB(ip, usr, flag, title, contain, score)
+		try:
+			db.add(record)
+			db.commit()
+		except Exception as e:
+			return 'Unhandle exception', 500
+	return render_template('publish.htm', usr='CTF admin')
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', debug=True)
