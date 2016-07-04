@@ -1,12 +1,7 @@
-#! /usr/bin/env python
+#! /usr/bin/env python2
 
 import logging
-logger = logging.getLogger('HST.CTF')
-logfmt = logging.Formatter('[%(asctime)-15s]  %(message)s')
-logFP  = logging.StreamHandler()
-logFP.setFormatter(logfmt)
-logger.addHandler(logFP)
-logger.setLevel(logging.INFO)
+logging.basicConfig(filename='flask.log', filemode='a', level=logging.DEBUG)
 
 from flask import Flask, request, make_response
 app = Flask(__name__)
@@ -17,7 +12,7 @@ homedir   = '~/.gnupg'
 
 if True:	## DB related
 	import sqlalchemy
-	from sqlalchemy import Column, Integer, String, DateTime, Text, Index, ForeignKey
+	from sqlalchemy import Column, Integer, String, DateTime, Text, Index, ForeignKey, BLOB
 	from sqlalchemy.ext.declarative import declarative_base
 	from sqlalchemy.orm import relationship, backref
 	Base = declarative_base()
@@ -66,9 +61,10 @@ if True:	## DB related
 		flag      = Column(Text, primary_key=True, unique=True)
 		title     = Column(Text(convert_unicode=True), unique=True)
 		contain   = Column(Text(convert_unicode=True))
+		upfile    = Column(BLOB)
 		timestamp = Column(DateTime)
 
-		def __init__(cls, ip, usr, flag, title, contain, score=1):
+		def __init__(cls, ip, usr, flag, title, contain, score=1, upfile=''):
 			from datetime import datetime
 			import gnupg
 
@@ -80,6 +76,7 @@ if True:	## DB related
 			cls.flag      = str(gpg.encrypt(flag, '5643EAA1'))
 			cls.title     = title
 			cls.contain   = contain
+			cls.upfile    = upfile
 			cls.timestamp = datetime.now()
 		def __repr__(cls):
 			return u'{0.usr:16s} add CTF - {0.title}'.format(cls)
@@ -270,11 +267,13 @@ def flagQuiz(cmd):
 		if not param or param in ('-h', '--help'):
 			return json.dumps('cat [-h] file')
 
-		record = FlagDBAgent().query(FlagDB).filter(FlagDB.title == param).all()
-		if 1 != len(record):
+		record = FlagDBAgent().query(FlagDB).filter(FlagDB.title == param).first()
+		if not record:
 			return json.dumps('file {0} not exist'.format(param))
 		else:
-			return json.dumps(u'Quiz: {0}\n\n{1}\n'.format(param, record[0].contain))
+			if record.upfile:
+				attachment = '\n\nattachment: [[!guib;;]attachment/{0}]'.format(record.title)
+			return json.dumps(u'Quiz: {0}\n\n{1}{2}\n'.format(param, record.contain, attachment))
 	elif 'flag' == cmd:
 		resp = flagSubmit(usr, param)
 		return json.dumps(resp) if isinstance(resp, str) else resp
@@ -301,7 +300,7 @@ def flagSubmit(usr, flag):
 	db      = FlagDBAgent()
 	gpg     = gnupg.GPG(homedir=homedir)
 
-	logger.info('{0}'.format(str(record)))
+	logging.info('{0}'.format(str(record)))
 
 	if not re.match(FMT, flag):
 		return 'Flag format not match, it should be {0}\n'.format(FMT)
@@ -332,19 +331,22 @@ def flagSubmit(usr, flag):
 def flagsPublish():
 	from flask import render_template
 
+	session = request.cookies['session'] if 'session' in request.cookies else ''
+	usr     =  FlagDBAgent().usr(session) if session else 'CTF admin'
 	if 'POST' == request.method:
 		import re
 
 		ip      = request.remote_addr.strip()
+		usr     = request.form.get('usr').strip()
 		title   = request.form.get('title').strip()
 		flag    = request.form.get('flag').strip()
 		level   = request.form.get('level').strip()
-		usr     = request.form.get('usr').strip()
 		contain = request.form.get('contain').strip()
+		upfile  = request.form.get('upfile')
 
 		db = FlagDBAgent()
 
-		if 0 != db.query(UsrDB).filter(UsrDB.usr == usr).count() and 'CTF admin' != usr:
+		if 0 == db.query(UsrDB).filter(UsrDB.usr == usr).count() and 'CTF admin' != usr:
 			return 'No such user {0}'.format(usr), 404
 		elif not title or not contain:
 			return 'Invalid title or contain',403
@@ -356,13 +358,25 @@ def flagsPublish():
 		score  = 1 if level == 'basic' else 100
 		if 'CTF admin' == usr:
 			score = 1
-		record = FlagDB(ip, usr, flag, title, contain, score)
+		record = FlagDB(ip, usr, flag, title, contain, score, upfile)
 		try:
 			db.add(record)
 			db.commit()
 		except Exception as e:
-			return 'Unhandle exception', 500
-	return render_template('publish.htm', usr='CTF admin')
+			return 'Unhandle exception - {0}'.format(e), 500
+	return render_template('publish.htm', usr=usr)
+@app.route('/attachment/<title>', methods=['GET'])
+def flagAttachment(title):
+	session = request.cookies['session'] if 'session' in request.cookies else ''
+	usr     =  FlagDBAgent().usr(session) if session else 'CTF admin'
+
+	if not usr:
+		return 'You need login first', 403
+
+	db = FlagDBAgent().query(FlagDB).filter(FlagDB.title == title).first()
+	if not db:
+		return 'Not found', 403
+	return db.upfile
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', debug=True)
+	app.run(host='0.0.0.0', port=3389, debug=True)
